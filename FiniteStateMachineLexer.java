@@ -1,6 +1,9 @@
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Stack;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class FiniteStateMachineLexer {
     private enum State {
@@ -33,9 +36,21 @@ public class FiniteStateMachineLexer {
         reservedWords.put("long", "RESERVED_WORD");
 
         reservedWords.put("class", "RESERVED_WORD");
+        reservedWords.put("public", "RESERVED_WORD");
     }
 
-    public void analyze(String input) {
+    public void analyze(List<String> tokens){
+        for (String token : tokens){
+            currentState = State.START;
+            analyzeToken(token);
+            currentToken.setLength(0);
+        }
+        if (!bracketStack.isEmpty()) {
+            System.out.println("Error: Unmatched opening bracket(s)");
+        }
+    }
+
+    public void analyzeToken(String input) {
         for (int i = 0; i < input.length(); i++) {
             char ch = input.charAt(i);
             switch (currentState) {
@@ -76,28 +91,34 @@ public class FiniteStateMachineLexer {
                     if (ch == 'x' || ch == 'X') {
                         currentToken.append(ch);
                         i++;
-                        while (i < input.length() && (Character.isDigit(input.charAt(i)) ||
-                                "abcdefABCDEF".indexOf(input.charAt(i)) >= 0) || input.charAt(i) == '_') {
+                        while (i < input.length() && ((Character.isDigit(input.charAt(i)) ||
+                                "abcdefABCDEF".indexOf(input.charAt(i)) >= 0) || input.charAt(i) == '_')) {
                             currentToken.append(input.charAt(i));
                             i++;
                         }
+
+                        if(currentToken.length() != input.length()){
+                            System.out.println("Error: Unrecognized token " + input);
+                            return;
+                        }
+
                         System.out.println("< " + currentToken + ", HEX_NUMBER >");
-                        currentToken.setLength(0);
-                        currentState = State.START;
-                        i--; // Reprocess the current character
-                        break;
-                    } else if (currentToken.charAt(0) == '0' && Character.isDigit(ch)) {
+                        return;
+                    } else if (!currentToken.isEmpty() && currentToken.charAt(0) == '0' && Character.isDigit(ch)) {
                         currentToken.append(ch); // Handle octal number
                         i++;
                         while (i < input.length() && ("01234567".indexOf(input.charAt(i)) >= 0 || input.charAt(i) == '_')) {
                             currentToken.append(input.charAt(i));
                             i++;
                         }
+
+                        if(currentToken.length() != input.length()){
+                            System.out.println("Error: Unrecognized token " + input);
+                            return;
+                        }
+
                         System.out.println("< " + currentToken + ", OCTAL_NUMBER >");
-                        currentToken.setLength(0);
-                        currentState = State.START;
-                        i--; // Reprocess the current character
-                        break;
+                        return;
                     }
 
                     if (Character.isDigit(ch) || ch == '_' || ch == '.') {
@@ -187,13 +208,12 @@ public class FiniteStateMachineLexer {
                     break;
 
                 case ERROR:
-                    System.out.println("Error: Unrecognized character " + ch);
-                    currentState = State.START; // Reset to START after error
-                    break;
+                    System.out.println("Error: Unrecognized token " + input);
+                    currentState = State.START;
+                    return;
             }
         }
 
-        // Handle remaining token at the end of input
         if (currentState == State.IDENTIFIER) {
             String identifier = currentToken.toString();
             if (reservedWords.containsKey(identifier)) {
@@ -204,11 +224,16 @@ public class FiniteStateMachineLexer {
         } else if (currentState == State.NUMBER) {
             System.out.println("< " + currentToken + ", NUMBER >");
         }
+    }
 
-        // Final check for unmatched brackets
-        if (!bracketStack.isEmpty()) {
-            System.out.println("Error: Unmatched opening bracket(s)");
+    private List<String> tokenizeFile(String content) {
+        List<String> tokens = new ArrayList<>();
+        Matcher matcher = Pattern.compile("//.*|/\\\\*.*?\\\\*/|\\d+\\.\\d+[fFdD]?|[(){}\\[\\],;]|[+\\-*/=<>!&|]|\\w+").matcher(content);
+
+        while (matcher.find()) {
+            tokens.add(matcher.group());
         }
+        return tokens;
     }
 
     private void handleOperator(char ch) {
@@ -246,19 +271,19 @@ public class FiniteStateMachineLexer {
                 (open == '[' && close == ']');
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
+        if (args.length < 1) {
+            System.out.println("Usage: java LexicalAnalyzer <file_path>");
+            return;
+        }
+
+        String filePath = args[0];
+        String content = Files.readString(Path.of(filePath));
+
         FiniteStateMachineLexer lexer = new FiniteStateMachineLexer();
-        String code = """
-                public class Example {
-                    // This is a comment
-                    long x = 100_100L;
-                    float y = 3.14f;
-                    int z = 0x1A_FF;
-                    int o = 0123;
-                    
-                    int a = (7) * 8 / 2;
-                }
-                """;
-        lexer.analyze(code);
+        List<String> tokens = lexer.tokenizeFile(content);
+//        System.out.println(Arrays.toString(tokens.toArray()));
+
+        lexer.analyze(tokens);
     }
 }

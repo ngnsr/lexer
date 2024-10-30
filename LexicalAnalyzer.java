@@ -1,58 +1,66 @@
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Stack;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class LexicalAnalyzer {
     private static final Pattern PATTERN = Pattern.compile(
-        "(?<HEX>0x[0-9A-Fa-f_]+[Ll]?)" +
-        "|(?<OCTAL>0[0-7][0-7_]*)" +
-        "|(?<FLOAT>\\b\\d+[\\d_]*\\.?[\\d_]*([eE][+-]?\\d+)?[fF]\\b)" +
-        "|(?<NUMBER>\\b\\d+[\\d_]*\\.?[\\d_]*([eE][+-]?\\d+)?[Ll]?\\b)" +
-        "|(?<STRING>\".*?\")" +
-        "|(?<CHAR>'\\\\?.')" +
-        "|(?<COMMENT>//.*|/\\*(.|\\R)*?\\*/)" +
-        "|(?<RESERVED>\\b(if|else|for|while|int|float|double|char|public|class|static|void|return)\\b)" +
-        "|(?<OPERATOR>[+\\-*/=<>!&|]+)" +
-        "|(?<DELIMITER>[,;(){}])" +
-        "|(?<IDENTIFIER>\\b[a-zA-Z_]\\w*\\b)" +
-        "|(?<INVALID>[^\\s])"
+            "(?<HEX>0x[0-9A-Fa-f_]+[Ll]?)" +
+                    "|(?<OCTAL>0[0-7][0-7_]*)" +
+                    "|(?<FLOAT>\\b\\d+[\\d_]*\\.?[\\d_]*([eE][+-]?\\d+)?[fF]\\b)" +
+                    "|(?<NUMBER>\\b\\d+[\\d_]*\\.?[\\d_]*([eE][+-]?\\d+)?[Ll]?\\b)" +
+                    "|(?<STRING>\".*?\")" +
+                    "|(?<CHAR>'\\\\?.')" +
+                    "|(?<COMMENT>//.*|/\\*(.|\\R)*?\\*/)" +
+                    "|(?<RESERVED>\\b(if|else|for|while|int|float|double|char|public|class|static|void|return)\\b)" +
+                    "|(?<OPERATOR>[+\\-*/=<>!&|]+)" +
+                    "|(?<DELIMITER>[,;(){}\\[\\]])" +
+                    "|(?<IDENTIFIER>\\b[a-zA-Z_]\\w*\\b)" +
+                    "|(?<INVALID>\\S+)" // Match any unrecognized token as invalid
     );
 
-    private final Stack<Character> bracketStack = new Stack<>();  // Стек для дужок
-    private final Stack<Integer> positionStack = new Stack<>();   // Стек для позицій дужок
+    private final Stack<Character> bracketStack = new Stack<>();
+    private final Stack<Integer> positionStack = new Stack<>();
 
-    public void analyze(String input) {
-        Matcher matcher = PATTERN.matcher(input);
-        int position;
+    public void analyze(List<String> tokens) {
+        for (String token : tokens) {
+            Matcher matcher = PATTERN.matcher(token);
+            int position = 0;
 
-        while (matcher.find()) {
-            position = matcher.start();  // Поточна позиція
-
-            if (matcher.group("HEX") != null) {
-                System.out.println("<" + matcher.group("HEX") + ", HEX_NUMBER>");
-            } else if (matcher.group("OCTAL") != null) {
-                System.out.println("<" + matcher.group("OCTAL") + ", OCTAL_NUMBER>");
-            } else if (matcher.group("FLOAT") != null) {
-                System.out.println("<" + matcher.group("FLOAT") + ", FLOAT_NUMBER>");
-            } else if (matcher.group("NUMBER") != null) {
-                System.out.println("<" + matcher.group("NUMBER") + ", NUMBER>");
-            } else if (matcher.group("STRING") != null) {
-                handleString(matcher.group("STRING"));
-            } else if (matcher.group("CHAR") != null) {
-                handleChar(matcher.group("CHAR"));
-            } else if (matcher.group("COMMENT") != null) {
-                System.out.println("<" + matcher.group("COMMENT") + ", COMMENT>");
-            } else if (matcher.group("RESERVED") != null) {
-                System.out.println("<" + matcher.group("RESERVED") + ", RESERVED_WORD>");
-            } else if (matcher.group("OPERATOR") != null) {
-                System.out.println("<" + matcher.group("OPERATOR") + ", OPERATOR>");
-            } else if (matcher.group("DELIMITER") != null) {
-                handleDelimiters(matcher.group("DELIMITER"), position);
-            } else if (matcher.group("IDENTIFIER") != null) {
-                System.out.println("<" + matcher.group("IDENTIFIER") + ", IDENTIFIER>");
-            } else if (matcher.group("INVALID") != null) {
-                System.out.println("Error at position " + position + ": Unrecognized symbol '" + matcher.group("INVALID") + "'");
+            if (matcher.matches()) {
+                if (matcher.group("HEX") != null) {
+                    System.out.println("<" + token + ", HEX_NUMBER>");
+                } else if (matcher.group("OCTAL") != null) {
+                    System.out.println("<" + token + ", OCTAL_NUMBER>");
+                } else if (matcher.group("FLOAT") != null) {
+                    System.out.println("<" + token + ", FLOAT_NUMBER>");
+                } else if (matcher.group("NUMBER") != null) {
+                    System.out.println("<" + token + ", NUMBER>");
+                } else if (matcher.group("STRING") != null) {
+                    handleString(token);
+                } else if (matcher.group("CHAR") != null) {
+                    handleChar(token);
+                } else if (matcher.group("COMMENT") != null) {
+                    System.out.println("<" + token + ", COMMENT>");
+                } else if (matcher.group("RESERVED") != null) {
+                    System.out.println("<" + token + ", RESERVED_WORD>");
+                } else if (matcher.group("OPERATOR") != null) {
+                    System.out.println("<" + token + ", OPERATOR>");
+                } else if (matcher.group("DELIMITER") != null) {
+                    handleDelimiters(token, position);
+                } else if (matcher.group("IDENTIFIER") != null) {
+                    System.out.println("<" + token + ", IDENTIFIER>");
+                } else {
+                    System.out.println("Unrecognized symbol '" + token + "'");
+                }
+            } else {
+                System.out.println("Unrecognized symbol '" + token + "'");
             }
+
         }
 
         while (!bracketStack.isEmpty()) {
@@ -86,20 +94,11 @@ public class LexicalAnalyzer {
         } else if (delimiter.equals("}") || delimiter.equals(")")) {
             if (!bracketStack.isEmpty()) {
                 char openBracket = bracketStack.lastElement();
-                positionStack.lastElement();
                 if ((openBracket == '{' && delimiter.equals("}")) || (openBracket == '(' && delimiter.equals(")"))) {
                     System.out.println("<" + delimiter + ", DELIMITER>");
                     bracketStack.pop();
                     positionStack.pop();
                 } else {
-                    if(bracketStack.size() >= 2 && isMatchingPair(bracketStack.get(bracketStack.size()-2), delimiter.charAt(0))){
-                        var a = bracketStack.pop();
-                        positionStack.pop();
-                        bracketStack.pop();
-                        positionStack.pop();
-                        System.out.println("Error at position " + position + ": Mismatched opening bracket '" + a + "'");
-                        return;
-                    }
                     System.out.println("Error at position " + position + ": Mismatched closing bracket '" + delimiter + "'");
                 }
             } else {
@@ -110,26 +109,30 @@ public class LexicalAnalyzer {
         }
     }
 
-    private boolean isMatchingPair(char open, char close) {
-        return (open == '(' && close == ')') ||
-                (open == '{' && close == '}') ||
-                (open == '[' && close == ']');
+    private List<String> tokenizeFile(String content) {
+        List<String> tokens = new ArrayList<>();
+        Matcher matcher = Pattern.compile("//.*|/\\\\*.*?\\\\*/|\\d+\\.\\d+[fFdD]?|[(){}\\[\\],;]|[+\\-*/=<>!&|]|\\w+").matcher(content);
+
+        while (matcher.find()) {
+            tokens.add(matcher.group());
+        }
+        return tokens;
     }
 
-    public static void main(String[] args) {
-        String code = """
-            public class Example {
-                // This is a comment
-                long x = 100_100L;
-                float y = 3.14f;
-                int z = 0x1A_FF;
-                int o = 0123;
-                
-                int a = (7) * 8 / 2;
-            }
-            """;
+    public static void main(String[] args) throws IOException {
+        if (args.length < 1) {
+            System.out.println("Usage: java LexicalAnalyzer <file_path>");
+            return;
+        }
 
-        LexicalAnalyzer analyzer = new LexicalAnalyzer();
-        analyzer.analyze(code);
+        String filePath = args[0];
+
+        String content = Files.readString(Path.of(filePath));
+
+        LexicalAnalyzer lexer = new LexicalAnalyzer();
+        List<String> tokens = lexer.tokenizeFile(content);
+//        System.out.println(Arrays.toString(tokens.toArray()));
+
+        lexer.analyze(tokens);
     }
 }

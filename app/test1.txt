@@ -1,0 +1,12 @@
+public class HelloWorld {
+    public static void main(String[] args) {
+        int x = 42;
+        float y = 3.14f;
+        // String text = "Hello, world!";
+        // char ch = 'A';
+        // if (x > 0) {
+        //     // Positive number
+        //     System.out.println(text);
+        // }
+    }
+}
